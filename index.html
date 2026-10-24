@@ -117,7 +117,11 @@ button{font:inherit;color:inherit}
 #card h3.sub{font-family:var(--serif);font-weight:400;font-size:17px;margin:16px 0 2px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08)}
 
 #clock{left:16px;right:16px;bottom:16px;height:var(--clock-h);display:flex;align-items:stretch;gap:14px;padding:12px 16px}
-#clock .left{flex:none;width:190px;display:flex;flex-direction:column;justify-content:center;gap:8px}
+#list h3.fold{cursor:pointer;user-select:none}
+#list h3.fold:hover{color:var(--ink)}
+#list h3.fold span{color:var(--ink-faint);opacity:.7;margin-left:4px}
+#date small{overflow:hidden;text-overflow:ellipsis;max-width:100%}
+#clock .left{flex:none;width:230px;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:8px}
 #play{width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.07);cursor:pointer;display:flex;align-items:center;justify-content:center}
 #play:hover{background:rgba(255,255,255,.14)}
 #play svg{width:16px;height:16px;fill:var(--ink)}
@@ -136,6 +140,22 @@ body.carded #views{right:392px}
 #legend{position:absolute;left:304px;bottom:calc(var(--clock-h) + 28px);z-index:2;font-size:11px;color:var(--ink-faint);display:flex;gap:14px;align-items:center;pointer-events:none}
 #legend svg{vertical-align:middle;margin-right:5px}
 #legend .sep{margin-left:8px;color:var(--ink-dim)}
+#plates{position:absolute;inset:0;pointer-events:none;z-index:1;overflow:hidden}
+.plate{position:absolute;margin:0;transform:translate(-50%,-50%);display:none;filter:drop-shadow(0 6px 24px rgba(0,0,0,.6))}
+.plate img{display:block;width:100%;border-radius:4px;border:1px solid rgba(255,255,255,.25)}
+.plate figcaption{margin-top:5px;font-size:11px;color:var(--ink-dim);text-shadow:0 1px 3px #000;text-align:center}
+.pmaps{margin-top:14px}
+.pmaps h5{margin:0 0 6px;font-size:10.5px;font-weight:500;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-faint)}
+.pmap{display:flex;gap:8px;align-items:flex-start;width:100%;text-align:left;background:none;border:1px solid transparent;border-radius:8px;padding:6px 7px;cursor:pointer;color:var(--ink-dim);font-size:12px;line-height:1.35}
+.pmap:hover{background:rgba(255,255,255,.05);color:var(--ink)}
+.pmap.on{border-color:rgba(142,208,255,.4);background:rgba(142,208,255,.08);color:var(--ink)}
+.pmap .box{flex:none;width:11px;height:11px;border-radius:3px;border:1px solid rgba(255,255,255,.35);margin-top:2px}
+.pmap.on .box{background:var(--accent);border-color:var(--accent)}
+.pmap small{display:block;color:var(--ink-faint);font-size:11px}
+.pnote{margin:2px 0 6px 26px;font-size:11.5px;line-height:1.45;color:var(--ink-dim)}
+.pnote a{font-size:11px}
+.fade{display:flex;align-items:center;gap:8px;margin:8px 0 2px;font-size:11px;color:var(--ink-faint)}
+.fade input{flex:1;accent-color:#8ed0ff}
 #tip{position:absolute;z-index:4;pointer-events:none;background:rgba(10,14,24,.92);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:6px 9px;font-size:12px;display:none;max-width:280px;line-height:1.4}
 #tip small{color:var(--ink-dim)}
 #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ink-faint);font-size:12px;letter-spacing:.08em;text-transform:uppercase;pointer-events:none;z-index:1}
@@ -210,6 +230,7 @@ body.carded #views{right:392px}
     <button id="stories" class="chip" title="Stop the clock when a journey reaches a story">Stop at stories</button>
   </div>
 </div>
+<div id="plates"></div>
 <div id="tip"></div>
 <div id="credit">© 2026 Laurence F. White · Natural Earth</div>
 
@@ -218,6 +239,7 @@ body.carded #views{right:392px}
 <script src="lib/sound.js"></script>
 <script src="data/base.js"></script>
 <script src="data/journeys.js"></script>
+<script src="data/maps.js"></script>
 <script>
 (function () {
 'use strict';
@@ -389,6 +411,7 @@ var story = null;         /* the callout open on the card */
 var hover = null, pins = [], heads = [];
 
 function setActive(list, keepTime) {
+  if (!keepTime) mapsOn = {};
   active = list;
   if (list.indexOf(focus) < 0) focus = list[0] || null;
   if (list.length < 2) align = false;
@@ -439,7 +462,7 @@ function toggleJourney(id) {
 function selectSet(sid, t) {
   var s = SETS.filter(function (x) { return x.id === sid; })[0]; if (!s) return;
   var list = s.ids.map(function (i) { return BYID[i]; }).filter(Boolean);
-  align = !!s.align;
+  align = !!s.align; showSets = true;
   setActive(list, false);
   activeSet = s;
   if (t != null) now = clamp(t, T0, T1);
@@ -456,7 +479,7 @@ function setAlign(on) {
 }
 var activeSet = null;
 function showAll() {
-  activeSet = null; active = []; focus = null; story = null; stopPlay(); align = false; setOffsets();
+  activeSet = null; active = []; focus = null; story = null; stopPlay(); align = false; setOffsets(); mapsOn = {};
   document.getElementById('card').classList.remove('show');
   renderList(); updateHash(); resize(); tickUI();
 }
@@ -584,7 +607,9 @@ function draw() {
   }
   ctx.beginPath(); ctx.arc(cx, cy, r, 0, 2 * Math.PI); ctx.lineWidth = 1; ctx.strokeStyle = PAL.rim; ctx.stroke();
 
+  drawMaps();
   drawJourneys();
+  placePlates();
   lastDrawMs = performance.now() - t0;
 }
 
@@ -609,6 +634,108 @@ function strokeGraded(j, upto, lw, alpha) {
   flush();
   ctx.setLineDash([]); ctx.globalAlpha = 1; ctx.lineCap = 'butt';
 }
+/* ------------------------------------------------------------ period maps */
+var MAPS = window.NAV_MAPS || [], mapsOn = {}, mapAlpha = 0.8, mapImg = {};
+function mapImage(m) {
+  if (!mapImg[m.id]) { var im = new Image(); im.onload = function () { scheduleDraw(); }; im.src = m.file; mapImg[m.id] = im; }
+  return mapImg[m.id];
+}
+function mapsFor(j) { return MAPS.filter(function (m) { return m.journeys && m.journeys.indexOf(j.id) >= 0; }); }
+/* a warped map is laid on the globe as a mesh of small triangles, each an affine piece of the image */
+var mapCv = document.createElement('canvas'), tc = null;
+function drawMaps() {
+  var any = MAPS.some(function (m) { return mapsOn[m.id] && m.mode === 'warp'; });
+  if (!any) return;
+  /* drawn opaque off screen and faded once, so the overlapping edges of the pieces do not show */
+  if (mapCv.width !== cv.width || mapCv.height !== cv.height) { mapCv.width = cv.width; mapCv.height = cv.height; }
+  tc = mapCv.getContext('2d');
+  tc.setTransform(1, 0, 0, 1, 0, 0); tc.clearRect(0, 0, mapCv.width, mapCv.height); tc.setTransform(DPR, 0, 0, DPR, 0, 0);
+  MAPS.forEach(function (m) {
+    if (!mapsOn[m.id] || m.mode !== 'warp') return;
+    var im = mapImage(m); if (!im.complete || !im.naturalWidth) return;
+    var b = m.bbox, step = clamp(5 / zoom, 0.4, 5);
+    var nx = Math.max(2, Math.ceil((b[2] - b[0]) / step)), ny = Math.max(2, Math.ceil((b[3] - b[1]) / step));
+    var iw = im.naturalWidth, ih = im.naturalHeight, row = [], prev = null;
+    for (var j = 0; j <= ny; j++) {
+      row = [];
+      var lat = b[3] - (b[3] - b[1]) * j / ny;
+      for (var i = 0; i <= nx; i++) {
+        var ll = [b[0] + (b[2] - b[0]) * i / nx, lat];
+        row.push(visible(ll) ? projection(ll) : null);
+      }
+      if (prev) for (i = 0; i < nx; i++) {
+        var a = prev[i], c = prev[i + 1], d = row[i], e = row[i + 1];
+        if (!a || !c || !d || !e) continue;
+        if (Math.max(a[0], c[0], d[0], e[0]) < 0 || Math.min(a[0], c[0], d[0], e[0]) > W || Math.max(a[1], c[1], d[1], e[1]) < 0 || Math.min(a[1], c[1], d[1], e[1]) > H) continue;
+        var u0 = iw * i / nx, u1 = iw * (i + 1) / nx, v0 = ih * (j - 1) / ny, v1 = ih * j / ny;
+        tri(im, a, c, d, [u0, v0], [u1, v0], [u0, v1]);
+        tri(im, c, e, d, [u1, v0], [u1, v1], [u0, v1]);
+      }
+      prev = row;
+    }
+  });
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = mapAlpha; ctx.drawImage(mapCv, 0, 0); ctx.restore();
+}
+function tri(im, p0, p1, p2, t0, t1, t2) {
+  var du1 = t1[0] - t0[0], dv1 = t1[1] - t0[1], du2 = t2[0] - t0[0], dv2 = t2[1] - t0[1], det = du1 * dv2 - du2 * dv1;
+  if (!det) return;
+  var dx1 = p1[0] - p0[0], dy1 = p1[1] - p0[1], dx2 = p2[0] - p0[0], dy2 = p2[1] - p0[1];
+  var a = (dx1 * dv2 - dx2 * dv1) / det, c = (dx2 * du1 - dx1 * du2) / det, b = (dy1 * dv2 - dy2 * dv1) / det, d = (dy2 * du1 - dy1 * du2) / det;
+  /* grow the clip a little past each edge so the pieces meet without hairlines */
+  var cx = (p0[0] + p1[0] + p2[0]) / 3, cy = (p0[1] + p1[1] + p2[1]) / 3;
+  tc.save(); tc.beginPath();
+  [p0, p1, p2].forEach(function (p, k) { var dx = p[0] - cx, dy = p[1] - cy, n = Math.hypot(dx, dy) || 1; tc[k ? 'lineTo' : 'moveTo'](p[0] + dx / n * 0.8, p[1] + dy / n * 0.8); });
+  tc.closePath(); tc.clip();
+  tc.transform(a, b, c, d, p0[0] - a * t0[0] - c * t0[1], p0[1] - b * t0[0] - d * t0[1]);
+  var sx = Math.max(0, Math.min(t0[0], t1[0], t2[0]) - 1), sy = Math.max(0, Math.min(t0[1], t1[1], t2[1]) - 1);
+  var ex = Math.min(im.naturalWidth, Math.max(t0[0], t1[0], t2[0]) + 1), ey = Math.min(im.naturalHeight, Math.max(t0[1], t1[1], t2[1]) + 1);
+  tc.drawImage(im, sx, sy, ex - sx, ey - sy, sx, sy, ex - sx, ey - sy);
+  tc.restore();
+}
+/* a plate is too distorted to lay on the ground, so it floats over the region it shows, at about its scale */
+var platesEl = document.getElementById('plates');
+function placePlates() {
+  MAPS.forEach(function (m) {
+    if (m.mode !== 'plate') return;
+    var el = document.getElementById('plate-' + m.id);
+    if (!mapsOn[m.id]) { if (el) el.style.display = 'none'; return; }
+    if (!el) {
+      el = document.createElement('figure'); el.className = 'plate'; el.id = 'plate-' + m.id;
+      el.innerHTML = '<img alt="" src="' + esc(m.file) + '"><figcaption>' + esc(m.title) + ', ' + m.year + (m.south_up ? ' · south at the top' : '') + '</figcaption>';
+      platesEl.appendChild(el);
+    }
+    var ll = m.anchor, vis = visible(ll), p = vis ? projection(ll) : [CX, CY];
+    var L = narrow ? 8 : 304, Rr = W - (!narrow && cardOpen() ? 392 : 8);
+    var w = clamp(m.scale_deg * DEG * R0 * zoom, 220, Math.min(Rr - L - 16, (H - 220) * m.w / m.h));
+    el.style.display = 'block'; el.style.width = Math.round(w) + 'px';
+    el.style.left = Math.round(clamp(p[0], L + w / 2 + 8, Rr - w / 2 - 8)) + 'px';
+    el.style.top = Math.round(clamp(p[1], 60 + w * m.h / m.w / 2, H - 160 - w * m.h / m.w / 2)) + 'px';
+    el.style.opacity = mapAlpha;
+  });
+}
+function mapsHtml(j) {
+  var ms = mapsFor(j); if (!ms.length) return '';
+  var h = ['<div class="pmaps"><h5>Period maps</h5>'];
+  ms.forEach(function (m) {
+    var on = !!mapsOn[m.id];
+    h.push('<button class="pmap' + (on ? ' on' : '') + '" data-map="' + m.id + '"><span class="box"></span><span>' + esc(m.title) + '<small>' + esc(m.maker || '') + ' · ' + m.year + ' · ' + (m.mode === 'warp' ? 'laid on the ground' : 'shown as a plate') + '</small></span></button>');
+    if (on) h.push('<div class="pnote">' + esc(m.note || '') + ' <a href="' + esc(m.source_url) + '" target="_blank" rel="noopener">Source</a>' + (m.licence ? ' · ' + esc(m.licence) : '') + '</div>');
+  });
+  if (Object.keys(mapsOn).some(function (k) { return mapsOn[k]; })) h.push('<label class="fade">Fade<input type="range" id="mapfade" min="0.15" max="1" step="0.05" value="' + mapAlpha + '">Clear</label>');
+  h.push('</div>');
+  return h.join('');
+}
+function toggleMap(id) {
+  mapsOn[id] = !mapsOn[id];
+  var m = MAPS.filter(function (x) { return x.id === id; })[0];
+  if (mapsOn[id] && m) {
+    if (m.mode === 'warp') mapImage(m);
+    var c = m.mode === 'warp' ? [(m.bbox[0] + m.bbox[2]) / 2, (m.bbox[1] + m.bbox[3]) / 2] : m.anchor;
+    if (!visible(c)) { follow = false; showFollow(); flyTo([-c[0], -c[1]], zoom); }
+  }
+  renderCard(); scheduleDraw();
+}
+
 function drawJourneys() {
   pins = []; heads = [];
   var showing = active.length ? active : JOURNEYS;
@@ -690,7 +817,7 @@ function drawJourneys() {
   });
 }
 function shortName(j) {
-  var L = j.leader || j.title;
+  var L = (j.leader || j.title).replace(/\s*\([^)]*\)/g, '').trim();
   if (/ then /.test(L)) L = L.split(' then ').pop();
   if (/ and /.test(L)) return L.split(' and ').map(function (s) { return s.trim().split(' ').pop(); }).join(' and ');
   return L.split(',')[0];
@@ -1013,7 +1140,7 @@ document.addEventListener('keydown', function (e) {
 });
 
 /* ------------------------------------------------------------ list */
-var listOrder = 'region', query = '';
+var listOrder = 'region', query = '', showSets = false;
 function hay(j) {
   if (!j.hay) j.hay = [j.title, j.leader, j.party, j.summary, j.calls.map(function (c) { return c.title; }).join(' '),
     j.pts.map(function (p) { return p[5]; }).join(' ')].join(' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -1029,8 +1156,9 @@ function renderList() {
   var h = [], q = query.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   var js = JOURNEYS.filter(function (j) { return !q || q.split(/\s+/).every(function (w) { return hay(j).indexOf(w) >= 0; }); });
   if (!q && SETS.length) {
-    h.push('<h3>Side by side</h3>');
-    SETS.forEach(function (s) {
+    var setsOpen = showSets;
+    h.push('<h3 class="fold" data-fold="1">' + (setsOpen ? '▾' : '▸') + ' Side by side <span>' + SETS.length + '</span></h3>');
+    if (setsOpen) SETS.forEach(function (s) {
       var sj = s.ids.map(function (i) { return BYID[i]; });
       var stops = sj.map(function (x, k) { return x.colour + ' ' + (k * 100 / sj.length) + '% ' + ((k + 1) * 100 / sj.length) + '%'; }).join(',');
       h.push('<button class="jrow' + (activeSet === s ? ' on' : '') + '" data-set="' + s.id + '"><span class="sw pair" style="background:linear-gradient(90deg,' + stops + ');color:' + sj[0].colour + '"></span><span><b>' + esc(s.title) + '</b><small>' + sj.map(shortName).join(', ') + (s.align ? ' · from the same start' : ' · ' + yr(yearOf(sj[0].start)) + '–' + yr(yearOf(sj[sj.length - 1].end))) + '</small></span></button>');
@@ -1060,6 +1188,7 @@ document.querySelector('#list .tabs').addEventListener('click', function (e) {
   renderList();
 });
 document.getElementById('jlist').addEventListener('click', function (e) {
+  if (e.target.closest('[data-fold]')) { showSets = !showSets; renderList(); return; }
   var b = e.target.closest('.jrow'); if (!b) return;
   var add = e.target.closest('[data-add]');
   if (b.dataset.set) selectSet(b.dataset.set);
@@ -1123,6 +1252,7 @@ function renderCard() {
     h.push('<div class="claim"><b>Claimed:</b> ' + esc(cl.claim) + '<br><b>Disputed:</b> ' + esc(cl.dispute) + (s2 ? '<br><span style="color:var(--ink-faint);font-size:11px">' + srcLink(s2) + '</span>' : '') + '</div>');
   }
   h.push('<p class="summary">' + esc(j.summary) + '</p>');
+  h.push(mapsHtml(j));
   if (!multi && j.calls.length && !(story && story.j === j)) h.push('<div class="storynav"><button class="chip" data-story="0">Read the stories (' + j.calls.length + ')</button></div>');
   if (j.links.length) h.push('<div class="links">' + j.links.map(function (l) { return '<a href="' + esc(l.url) + '" target="_blank" rel="noopener">' + esc(l.label) + '</a>'; }).join('') + '</div>');
   h.push('<details><summary>Sources and how the route was drawn</summary><ul>' + j.sources.map(function (s) { return '<li>' + srcLink(s) + '</li>'; }).join('') + '</ul>' +
@@ -1179,6 +1309,7 @@ cardEl.addEventListener('click', function (e) {
   if (!b) return;
   if (b.classList.contains('close')) { closeCard(); return; }
   if (b.dataset.align != null) { setAlign(b.dataset.align === '1'); return; }
+  if (b.dataset.map) { toggleMap(b.dataset.map); return; }
   if (b.dataset.feed) {
     var fp = b.dataset.feed.split('|'), fj = BYID[fp[0]], fc = fj.calls[+fp[1]]; stopPlay();
     story = { j: fj, c: fc }; now = clamp(fc.t - off(fj), T0, T1); renderCard(); tickUI();
@@ -1190,6 +1321,10 @@ cardEl.addEventListener('click', function (e) {
     now = clamp(c.t - off(focus), T0, T1); openStory(focus, c); tickUI();
     if (c.lat != null && !visible([c.lon, c.lat])) flyTo([-c.lon, -c.lat], zoom);
   }
+});
+
+cardEl.addEventListener('input', function (e) {
+  if (e.target.id === 'mapfade') { mapAlpha = +e.target.value; scheduleDraw(); }
 });
 
 /* ------------------------------------------------------------ sound */
@@ -1235,7 +1370,7 @@ window.NV = {
   toggle: toggleJourney, align: setAlign, active: function () { return active.map(function (j) { return j.id; }); },
   search: function (q) { var el = document.getElementById('q'); el.value = q; query = q; renderList(); return Array.prototype.map.call(document.querySelectorAll('#jlist .jrow[data-id]'), function (b) { return b.dataset.id; }); },
   order: function (o) { document.querySelector('#list .tabs [data-order=' + o + ']').click(); },
-  rotation: function () { return rotation.slice(); }, following: function () { return follow; },
+  rotation: function () { return rotation.slice(); }, view: function () { return { cx: CX, cy: CY, r: R0 * zoom }; }, following: function () { return follow; },
   selectSet: function (id, iso) { selectSet(id, iso ? day(iso) : null); },
   showAll: showAll,
   setDate: function (iso) { now = clamp(day(iso), T0, T1); tickUI(); },
@@ -1246,7 +1381,9 @@ window.NV = {
   drawMs: function () { draw(); return lastDrawMs; },
   renderer: function () { return GL ? 'webgl' : '2d'; },
   ready: function () { return texturesReady; },
-  story: function () { return story && story.c ? story.c.title : null; }
+  story: function () { return story && story.c ? story.c.title : null; },
+  maps: function (id) { return id ? mapsFor(BYID[id]).map(function (m) { return m.id; }) : MAPS.map(function (m) { return m.id; }); },
+  toggleMap: toggleMap
 };
 
 window.addEventListener('resize', resize);
