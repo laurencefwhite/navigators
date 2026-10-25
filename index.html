@@ -512,8 +512,10 @@ function followTarget() {
   var m = Math.hypot(sx, sy, sz); if (!m) return null;
   return [Math.atan2(sy, sx) / DEG, Math.asin(clamp(sz / m, -1, 1)) / DEG];
 }
+var followHold = 0;
 function stepFollow(dt) {
   if (!follow || fly || drag || pinch || !active.length) return false;
+  if (performance.now() < followHold) return true;
   var t = followTarget(); if (!t) return false;
   var dx = ((-t[0] - rotation[0]) % 360 + 540) % 360 - 180, dy = -t[1] - rotation[1];
   if (Math.abs(dx) < 0.005 && Math.abs(dy) < 0.005) return false;
@@ -706,10 +708,12 @@ function placePlates() {
     }
     var ll = m.anchor, vis = visible(ll), p = vis ? projection(ll) : [CX, CY];
     var L = narrow ? 8 : 304, Rr = W - (!narrow && cardOpen() ? 392 : 8);
-    var w = clamp(m.scale_deg * DEG * R0 * zoom, 220, Math.min(Rr - L - 16, (H - 220) * m.w / m.h));
+    /* sized with the land, so it grows and shrinks as the globe is zoomed; kept between the panels only while it
+       fits there, and past that left over its own ground */
+    var w = Math.max(160, m.scale_deg * DEG * R0 * zoom), h = w * m.h / m.w;
     el.style.display = 'block'; el.style.width = Math.round(w) + 'px';
-    el.style.left = Math.round(clamp(p[0], L + w / 2 + 8, Rr - w / 2 - 8)) + 'px';
-    el.style.top = Math.round(clamp(p[1], 60 + w * m.h / m.w / 2, H - 160 - w * m.h / m.w / 2)) + 'px';
+    el.style.left = Math.round(w < Rr - L - 16 ? clamp(p[0], L + w / 2 + 8, Rr - w / 2 - 8) : p[0]) + 'px';
+    el.style.top = Math.round(h < H - 220 ? clamp(p[1], 60 + h / 2, H - 160 - h / 2) : p[1]) + 'px';
     el.style.opacity = mapAlpha;
   });
 }
@@ -731,7 +735,8 @@ function toggleMap(id) {
   if (mapsOn[id] && m) {
     if (m.mode === 'warp') mapImage(m);
     var c = m.mode === 'warp' ? [(m.bbox[0] + m.bbox[2]) / 2, (m.bbox[1] + m.bbox[3]) / 2] : m.anchor;
-    if (!visible(c)) { follow = false; showFollow(); flyTo([-c[0], -c[1]], zoom); }
+    /* go and show the map for a few seconds, then back to the travellers if the view was following them */
+    if (!visible(c)) { flyTo([-c[0], -c[1]], zoom); followHold = performance.now() + 1300 + 3500; }
   }
   renderCard(); scheduleDraw();
 }
@@ -1088,7 +1093,9 @@ function anyMoving(t) {
   return false;
 }
 function stepPlay(t) {
-  var dt = Math.min(0.1, (t - playLast) / 1000); playLast = t;
+  /* a frame's time can be a little earlier than the moment Play was pressed: never step backwards, or the clock
+     slips back before the story it stopped at and stops there again */
+  var dt = Math.max(0, Math.min(0.1, (t - playLast) / 1000)); playLast = Math.max(playLast, t);
   var r = rate * (!adaptive || anyMoving(now) ? 1 : Math.max(8, 240 / rate));
   var next = now + r * dt;
   /* never step over a story */
@@ -1375,6 +1382,7 @@ window.NV = {
   showAll: showAll,
   setDate: function (iso) { now = clamp(day(iso), T0, T1); tickUI(); },
   date: function () { return isoOf(now); },
+  now: function () { return now; },
   setView: function (lon, lat, z) { fly = null; rotation = [-lon, -lat]; if (z) zoom = z; scheduleDraw(); },
   play: startPlay, stop: stopPlay, playing: function () { return playing; },
   state: function (id) { var s = stateAt(BYID[id], jt(BYID[id])); return s && { ll: s.ll, held: !!s.held, km: s.km, i: s.i, place: s.place }; },
