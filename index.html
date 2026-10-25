@@ -156,8 +156,9 @@ body.carded #views{right:392px}
 .pnote a{font-size:11px}
 .fade{display:flex;align-items:center;gap:8px;margin:8px 0 2px;font-size:11px;color:var(--ink-faint)}
 .fade input{flex:1;accent-color:#8ed0ff}
-#tip{position:absolute;z-index:4;pointer-events:none;background:rgba(10,14,24,.92);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:6px 9px;font-size:12px;display:none;max-width:280px;line-height:1.4}
+#tip{position:absolute;z-index:4;pointer-events:none;background:rgba(10,14,24,.92);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:6px 9px;font-size:12px;display:none;max-width:310px;line-height:1.4}
 #tip small{color:var(--ink-dim)}
+#tip .how{display:block;margin-top:3px;font-size:10.5px;color:var(--ink-faint)}
 #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ink-faint);font-size:12px;letter-spacing:.08em;text-transform:uppercase;pointer-events:none;z-index:1}
 #credit{position:absolute;right:18px;top:auto;bottom:4px;z-index:1;font-size:10px;color:#4a566c;pointer-events:none}
 
@@ -761,10 +762,10 @@ function drawJourneys() {
     return;
   }
   active.forEach(function (j) {
-    /* the route still to come, as a ghost */
-    ctx.globalAlpha = 0.22; ctx.lineWidth = 1.1; ctx.strokeStyle = j.colour; ctx.setLineDash([2, 4]);
+    /* the whole route, lightly, from the first day: plainer than the travelled part, clearer than the others */
+    ctx.globalAlpha = 0.42; ctx.lineWidth = 1.5; ctx.strokeStyle = j.colour;
     ctx.beginPath(); path({ type: 'LineString', coordinates: j.ll }); ctx.stroke();
-    ctx.setLineDash([]); ctx.globalAlpha = 1;
+    ctx.globalAlpha = 1;
     var st = stateAt(j, jt(j));
     if (!st) return;
     /* a soft underlay, then the travelled route by grade */
@@ -916,10 +917,26 @@ cv.addEventListener('pointermove', function (e) {
     return;
   }
   var j = nearestRoute(e.clientX, e.clientY);
-  if (j !== (hover && hover.j)) { hover = j ? { j: j } : null; scheduleDraw(); }
-  if (j) { cv.classList.add('over'); showTip('<b>' + esc(j.title) + '</b><br><small>' + esc(j.leader) + ' · ' + years(j) + '</small>', e.clientX, e.clientY); }
-  else { cv.classList.remove('over'); hideTip(); }
+  if (!j) { clearTimeout(dwell.timer); dwell.j = null; if (hover) { hover = null; scheduleDraw(); } cv.classList.remove('over'); hideTip(); return; }
+  if (hover && hover.j === j) { routeTip(j, e.clientX, e.clientY); return; }
+  if (!active.length) { hover = { j: j }; scheduleDraw(); routeTip(j, e.clientX, e.clientY); return; }
+  /* a route passed over on the way somewhere else stays quiet */
+  if (hover) { hover = null; scheduleDraw(); hideTip(); cv.classList.remove('over'); }
+  dwell.x = e.clientX; dwell.y = e.clientY;
+  if (dwell.j !== j) {
+    clearTimeout(dwell.timer); dwell.j = j;
+    dwell.timer = setTimeout(function () {
+      if (dwell.j !== j || drag || pinch) return;
+      hover = { j: j }; scheduleDraw(); routeTip(j, dwell.x, dwell.y);
+    }, DWELL_MS);
+  }
 });
+var DWELL_MS = 600, dwell = { j: null, timer: 0, x: 0, y: 0 };
+function routeTip(j, x, y) {
+  cv.classList.add('over');
+  var how = active.length ? (active.indexOf(j) < 0 ? 'Click to show this journey instead · Shift-click to add it' : '') : 'Click to show this journey · Shift-click to add others to it';
+  showTip('<b>' + esc(j.title) + '</b><br><small>' + esc(j.leader) + ' · ' + years(j) + '</small>' + (how ? '<span class="how">' + how + '</span>' : ''), x, y);
+}
 function endPointer(e) {
   delete pointers[e.pointerId];
   if (Object.keys(pointers).length < 2) pinch = null;
@@ -927,19 +944,23 @@ function endPointer(e) {
     var wasDrag = moved;
     drag = null; cv.classList.remove('dragging');
     if (interacting) { interacting = false; scheduleDraw(); }
-    if (!wasDrag && e.type === 'pointerup') click(e.clientX, e.clientY);
+    if (!wasDrag && e.type === 'pointerup') click(e.clientX, e.clientY, e.shiftKey);
   }
 }
 cv.addEventListener('pointerup', endPointer);
 cv.addEventListener('pointercancel', endPointer);
-cv.addEventListener('pointerleave', function () { if (hover) { hover = null; scheduleDraw(); } hideTip(); });
-function click(x, y) {
+cv.addEventListener('pointerleave', function () { clearTimeout(dwell.timer); dwell.j = null; if (hover) { hover = null; scheduleDraw(); } hideTip(); });
+function click(x, y, shift) {
   var p = pinAt(x, y);
   if (p && p.c) { openStory(p.j, p.c); return; }
   if (p && p.claim) { focus = p.j; story = { j: p.j, claim: p.claim }; renderCard(); return; }
   if (p && p.head) { focus = p.head.j; renderCard(); return; }
-  var j = nearestRoute(x, y);
-  if (j) { hideTip(); hover = null; selectJourney(j.id); }
+  /* with journeys on the clock, only a route already lit by resting on it can be clicked */
+  var j = active.length ? (hover && hover.j) : nearestRoute(x, y);
+  if (!j) return;
+  hideTip(); hover = null; dwell.j = null;
+  if (shift) { if (active.indexOf(j) < 0) toggleJourney(j.id); }
+  else selectJourney(j.id);
 }
 var wheelTimer = null;
 cv.addEventListener('wheel', function (e) {
@@ -1383,6 +1404,8 @@ window.NV = {
   setDate: function (iso) { now = clamp(day(iso), T0, T1); tickUI(); },
   date: function () { return isoOf(now); },
   now: function () { return now; },
+  routePoint: function (id) { var j = BYID[id], ll = j.ll.filter(visible); if (!ll.length) return null; var p = projection(ll[Math.floor(ll.length / 2)]); return [p[0], p[1]]; },
+  hovered: function () { return hover ? hover.j.id : null; },
   setView: function (lon, lat, z) { fly = null; rotation = [-lon, -lat]; if (z) zoom = z; scheduleDraw(); },
   play: startPlay, stop: stopPlay, playing: function () { return playing; },
   state: function (id) { var s = stateAt(BYID[id], jt(BYID[id])); return s && { ll: s.ll, held: !!s.held, km: s.km, i: s.i, place: s.place }; },
