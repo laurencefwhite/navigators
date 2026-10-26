@@ -43,6 +43,10 @@ button{font:inherit;color:inherit}
 .panel{position:absolute;z-index:2;background:var(--panel);border:1px solid var(--panel-brd);border-radius:14px;box-shadow:var(--shadow);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 
 #brand{position:absolute;left:20px;top:16px;z-index:2;pointer-events:none}
+.shelf{display:inline-block;margin-bottom:5px;color:var(--ink-faint);font-size:10px;letter-spacing:.12em;text-transform:uppercase;text-decoration:none}
+.shelf:hover{color:var(--ink)}
+#brand .shelf{pointer-events:auto;margin:0 0 0 16px;vertical-align:4px}
+#brand h1{display:inline-block}
 #brand h1{margin:0;font-family:var(--serif);font-weight:300;font-size:26px;letter-spacing:.02em}
 #brand p{margin:2px 0 0;color:var(--ink-faint);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase}
 
@@ -121,6 +125,9 @@ button{font:inherit;color:inherit}
 #list h3.fold:hover{color:var(--ink)}
 #list h3.fold span{color:var(--ink-faint);opacity:.7;margin-left:4px}
 #date small{overflow:hidden;text-overflow:ellipsis;max-width:100%}
+#clear{position:absolute;top:-9px;right:-9px;width:22px;height:22px;border-radius:50%;border:1px solid var(--panel-brd);background:#1a2233;color:var(--ink-dim);font-size:15px;line-height:1;padding:0;cursor:pointer;display:none;align-items:center;justify-content:center;box-shadow:var(--shadow)}
+#clear:hover{background:#2a3450;color:var(--ink)}
+#clock.has #clear{display:flex}
 #clock .left{flex:none;width:230px;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:8px}
 #play{width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.07);cursor:pointer;display:flex;align-items:center;justify-content:center}
 #play:hover{background:rgba(255,255,255,.14)}
@@ -186,7 +193,7 @@ body.carded #views{right:392px}
   <canvas id="globe" class="layer"></canvas>
   <div id="loading">Loading the globe</div>
 </div>
-<div id="brand"><h1>Navigators</h1><p>Great journeys by sea, over land and across the ice</p></div>
+<div id="brand"><h1>Navigators</h1><a class="shelf" href="https://laurencefwhite.github.io/globe-shelf/" title="All the globes">&lsaquo; The Globe Shelf</a><p>Great journeys by sea, over land and across the ice</p></div>
 <button id="menu" class="chip">Journeys</button>
 <div id="list" class="panel">
   <div class="head"><span>Journeys</span><button id="all" class="chip">Show all</button></div>
@@ -215,6 +222,7 @@ body.carded #views{right:392px}
   <span><svg width="10" height="10"><rect x="2.5" y="2.5" width="5" height="5" fill="#fff" stroke="#cfd8e6" transform="rotate(45 5 5)"/></svg>Story</span>
 </div>
 <div id="clock" class="panel">
+  <button id="clear" aria-label="Clear the journeys" title="Clear the journeys from the timeline">&times;</button>
   <div class="left">
     <div class="row"><button id="play" aria-label="Play"><svg viewBox="0 0 16 16"><path id="playicon" d="M4 2.5v11l9-5.5z"/></svg></button>
     <div id="date">–<small>&nbsp;</small></div></div>
@@ -1148,6 +1156,7 @@ function tickUI(fromPlay) {
       d.innerHTML = esc(fmt(now)) + '<small>' + esc(sub) + (dateOf(now).getUTCFullYear() < 1 ? ' · dates approximate' : dateOf(now).getUTCFullYear() < 1582 ? ' · Julian calendar' : '') + '</small>';
     }
   } else d.innerHTML = 'All journeys<small>' + JOURNEYS.length + ' routes</small>';
+  document.getElementById('clock').classList.toggle('has', active.length > 0);
   drawScrub();
   renderStatus();
   if (active.length > 1 && cardOpen()) { var fk = feedKey(); if (fk !== lastFeed) { lastFeed = fk; renderCard(); } }
@@ -1224,6 +1233,7 @@ document.getElementById('jlist').addEventListener('click', function (e) {
   else selectJourney(b.dataset.id);
   if (narrow) document.getElementById('list').classList.remove('open');
 });
+document.getElementById('clear').addEventListener('click', function () { showAll(); });
 document.getElementById('all').addEventListener('click', function () { showAll(); flyTo([-20, -5], 1); });
 document.getElementById('menu').addEventListener('click', function () { document.getElementById('list').classList.toggle('open'); });
 document.getElementById('views').addEventListener('click', function (e) {
